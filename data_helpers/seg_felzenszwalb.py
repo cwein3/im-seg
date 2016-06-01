@@ -7,6 +7,11 @@ import skimage.segmentation
 import skimage.io
 import skimage.color
 import matplotlib.pylab as plt
+import matplotlib.colors
+import random
+
+colors = [(1,1,1)] + [(random.random(),random.random(),random.random()) for i in xrange(255)]
+new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
 
 def main():
     parser = ap.ArgumentParser()
@@ -16,9 +21,9 @@ def main():
     dataset_file = args.directory + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (args.imfile, args.imfile))
     print('Extracting the file' + dataset_file)
     im = skimage.color.rgb2gray(skimage.io.imread(dataset_file))
-    seg_mask = skimage.segmentation.felzenszwalb(im, scale=100)
+    seg_mask = skimage.segmentation.felzenszwalb(im, scale=500, min_size=40)
     normalized_seg = seg_mask.astype(np.float)/np.amax(seg_mask)*255
-    plt.imshow(normalized_seg, cmap='gray')
+    plt.imshow(normalized_seg, cmap=new_map)
     plt.show()
 
 if __name__ == '__main__':

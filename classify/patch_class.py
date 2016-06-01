@@ -38,6 +38,9 @@ def convert_data():
     num_classes = len(class_map)
     X = np.array([val[0] for val in Xy_arr])
     y = np.array([class_map[val[1]] for val in Xy_arr])
+    
+    pickle.dump(class_map, open(args.name_map, "w"))
+
     print "Classes to indices map:", class_map
     print "Class counts:", class_counts 
     return X, y, num_classes    
@@ -80,6 +83,7 @@ def main():
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate to use.')
     parser.add_argument('--num_classes', type=int, default=110, help='Number of total classes.')
     parser.add_argument('--allowed_num', type=int, help='The allowed number of training examples for one class.')
+    parser.add_argument('--name_map', type=str, default='classmap.pkl', help='Name of the pickle file which stores the class map.')
     global args
     args = parser.parse_args()
     X, y, num_classes = convert_data()

@@ -13,6 +13,19 @@ import skimage.segmentation
 import cPickle as pickle
 import collections
 import matplotlib.pyplot as plt
+import matplotlib.colors
+import random
+import pdb
+
+import pyximport
+pyximport.install(
+    setup_args={"include_dirs":np.get_include()}
+    )
+
+import sa_cy
+
+colors = [(1,1,1)] + [(random.random(),random.random(),random.random()) for i in xrange(255)]
+new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
 
 def assign_superpix_prob(im, network, descs):
     """
@@ -21,7 +34,7 @@ def assign_superpix_prob(im, network, descs):
     descs: list of tuple of (desc_x, desc_y, sift feature)
     """
     im = skimage.color.rgb2gray(im)
-    seg_mask = skimage.segmentation.felzenszwalb(im, scale=100)
+    seg_mask = skimage.segmentation.felzenszwalb(im, scale=500, min_size=40)
     superpix_probs = {} # map a superpixel to the average of probabilities for descriptors falling in it
     superpix_counter = collections.Counter()
     predict_descs = np.array([desc[2] for desc in descs])
@@ -55,7 +68,11 @@ def calc_pix_grad(im, p1, p2):
     im: image in RGB
     p1, p2: tuples for the (y, x) of the image coords
     """
-    return np.linalg.norm(im[p1[0], p1[1], :] - im[p2[0], p2[1], :])    
+    ret = np.abs(im[p1[0], p1[1]] - im[p2[0], p2[1]])
+    #ret = np.linalg.norm(im[p1[0], p1[1], :] - im[p2[0], p2[1], :])
+    #ret /= 255**2
+    #ret = 1000
+    return ret
 
 def neighbor_grad_assign(im, point, curr_assign):
     grad_assign = []
@@ -77,7 +94,31 @@ def neighbor_grad_assign(im, point, curr_assign):
         grad_assign.append(ga)
     return grad_assign
 
-def perform_sa(im, crf_params, loc_probs, anneal_sched, init_assign=None, plot_every=1, live_plot=True):
+def perform_sa_cy(im, crf_params, loc_probs, anneal_sched, plot_every=True, live_plot=False):
+    d, eta0, alpha, t = crf_params
+    seg_mat, superpix_probs = loc_probs
+    pix_prb_new = [None for _ in xrange(len(superpix_probs))]
+    for key in superpix_probs:
+        pix_prb_new[key] = superpix_probs[key]/np.sum(superpix_probs[key])
+    pix_prb_new = np.array(pix_prb_new)
+    
+    assign = sa_cy.perform_sa(
+                im.astype(np.float64), 
+                seg_mat.astype(np.float64), 
+                pix_prb_new,
+                anneal_sched,
+                plot_every,
+                live_plot,
+                d,
+                eta0,
+                alpha,
+                t)
+
+    plt.imshow(assign, cmap=new_map)
+    plt.show()
+    return assign
+    
+def perform_sa(im, crf_params, loc_probs, anneal_sched, init_assign=None, plot_every=1, live_plot=False):
     """
     im: image in RGB
     crf_params: some params in silberman's paper
@@ -91,6 +132,7 @@ def perform_sa(im, crf_params, loc_probs, anneal_sched, init_assign=None, plot_e
     W = im.shape[1]
     num_classes = superpix_probs[0].shape[0]
     curr_probs = np.zeros((num_classes,))
+    rgb_im = skimage.color.rgb2gray(im)
  
     if init_assign is None: 
         init_assign = np.zeros((H, W))   
@@ -105,29 +147,40 @@ def perform_sa(im, crf_params, loc_probs, anneal_sched, init_assign=None, plot_e
         for h in xrange(H):
             for w in xrange(W):
                 curr_loc_probs = superpix_probs[seg_mat[h, w]]
-                grad_assign = neighbor_grad_assign(im, (h, w), init_assign)
+                grad_assign = neighbor_grad_assign(rgb_im, (h, w), curr_assign)
                 curr_probs = -np.log(curr_loc_probs)
                 for ga in grad_assign: 
                     curr_probs += d*eta0*np.exp(-alpha*max(ga[0] - t, 0))
                     curr_probs[ga[1]] -= d*eta0*np.exp(-alpha*max(ga[0] - t, 0))
-                curr_probs *= -1/temp
+                curr_probs *= -1.0/temp
                 curr_probs -= np.amax(curr_probs)
                 curr_probs = np.exp(curr_probs)
                 curr_probs /= curr_probs.sum()
                 curr_assign[h, w] = np.random.choice(num_classes, p=curr_probs)
         if live_plot and (ind % plot_every == 0):
-            normalized_assign = curr_assign.astype(np.float)/np.amax(curr_assign)*255
-            plt.imshow(normalized_assign, cmap='gray')            
+            plt.imshow(curr_assign, cmap=new_map)            
             plt.show()
 
+    for h in xrange(H):
+        for w in xrange(W):
+            curr_loc_probs = superpix_probs[seg_mat[h, w]]
+            grad_assign = neighbor_grad_assign(rgb_im, (h, w), curr_assign)
+            curr_probs = -np.log(curr_loc_probs)
+            for ga in grad_assign:
+                curr_probs += d*eta0*np.exp(-alpha*max(ga[0] - t, 0))
+                curr_probs[ga[1]] -= d*eta0*np.exp(-alpha*max(ga[0] - t, 0))
+            curr_assign[h, w] = np.argmax(-curr_probs)
+
+    plt.imshow(curr_assign, cmap=new_map)
+    plt.show()
     return curr_assign        
 
-def segment_im(imfile, featfile, network_file):
+def segment_im(imfile, featfile, network_file, d, eta0, alpha, t):
     feat_f = open(featfile, "r")
     im = skimage.io.imread(imfile)    
     network = pickle.load(open(network_file, "r"))
     descs = []
-
+        
     for line in feat_f: 
         parts = line.split(" ")
         centers = (int(float(parts[0])), int(float(parts[1])))
@@ -135,8 +188,49 @@ def segment_im(imfile, featfile, network_file):
         descs.append((centers[0], centers[1], feat))
     
     seg_mask, pix_probs = assign_superpix_prob(im, network, descs)
-    perform_sa(im, (3, 100, 40, 0.04), (seg_mask, pix_probs), [1 for _ in xrange(10000)])
+    assign = perform_sa_cy(im, (d, eta0, alpha, t), (seg_mask, pix_probs), np.linspace(1, 0.01, 2))
     feat_f.close()    
+    return assign
+
+def find_acc(filenum, network_file):
+    mat_path = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/seg.mat' % filenum)
+    seg_labels = scipy.io.loadmat(mat_path)['seglabel']
+    names = scipy.io.loadmat(mat_path)['names']
+    imfile = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (args.imfile, args.imfile))
+    featfile = args.feat_dir + ('%04d.txt' % args.imfile)
+    network_file = args.network_path
+    assign = segment_im(imfile, featfile, network_file, args.d, args.eta0, args.alpha, args.t)
+    class_map = pickle.load(open(args.class_map, "r"))
+    conv_labels = np.zeros(assign.shape)
+    for h in xrange(assign.shape[0]):
+        for w in xrange(assign.shape[1]):
+            curr_name = names[seg_labels[h, w] - 1][0][0]
+            if curr_name not in class_map:
+                class_map[curr_name] = len(class_map)
+            conv_labels[h, w] = class_map[curr_name]
+
+    numpix = assign.shape[0]*assign.shape[1]
+    acc_map = (conv_labels == assign)
+    plt.imshow(acc_map, cmap=new_map)
+    plt.show()
+
+    print "Pixel accuracy:", float(np.sum(acc_map))/numpix
+
+def plot_pix_grads(imfile):
+    im = skimage.io.imread(imfile)
+    im = skimage.color.rgb2gray(im)
+    H = im.shape[0]
+    W = im.shape[1]
+    dummy_assign = np.zeros((H, W))
+    grad_map = np.zeros((H, W))
+    for h in xrange(H):
+        for w in xrange(W):
+            grad_assign = neighbor_grad_assign(im, (h, w), dummy_assign)
+            grad_mean = np.mean(np.array([ga[0] for ga in grad_assign]))
+            grad_map[h, w] = grad_mean
+    normalized_map = grad_map/np.amax(grad_map)*255
+    plt.imshow(normalized_map, cmap='gray')
+    plt.show()    
 
 def main():
     global args
@@ -145,11 +239,20 @@ def main():
     parser.add_argument('--feat_dir', type=str, help='The directory where all the HOG features are stored.') 
     parser.add_argument('--network_path', type=str, help='Path of the neural network we use.')
     parser.add_argument('--imfile', type=int, help='Which image we decide to use.')
+    parser.add_argument('--mode', type=str, default='SEGMENT', help='What function to call.')
+    parser.add_argument('--d', type=float, default=3, help='Parameter in the crf, see NYU paper 1.')
+    parser.add_argument('--eta0', type=float, default=10, help='See first NYU paper for parameter description.')
+    parser.add_argument('--alpha', type=float, default=4000, help='See first NYU paper for parameter description.')
+    parser.add_argument('--t', type=float, default=0, help='See first NYU paper for parameter description.')
+    parser.add_argument('--class_map', type=str, default='../classify/classmap.pkl', help='Class map.')
     args = parser.parse_args()
     imfile = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (args.imfile, args.imfile))
     featfile = args.feat_dir + ('%04d.txt' % args.imfile)
     network_file = args.network_path
-    segment_im(imfile, featfile, network_file)
+    if args.mode == 'SEGMENT':
+        find_acc(args.imfile, network_file)
+    if args.mode == 'GRADS':
+        plot_pix_grads(imfile)
 
 if __name__ == '__main__':
     main()

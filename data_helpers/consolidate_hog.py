@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--HOG_dir', type=str, help='The directory where all the HOG features are stored.') 
     parser.add_argument('--num_files', type=int, help='The number of .txt files in the directory containing the HOG features.')
     parser.add_argument('--outfile', type=str, help='The name of the pickle file we output the dataset to.')
+    parser.add_argument('--
     global args
     args = parser.parse_args()
     tot_data = []
