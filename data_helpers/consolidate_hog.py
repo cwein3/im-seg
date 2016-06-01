@@ -11,6 +11,7 @@ import skimage.color
 import skimage.feature
 import matplotlib.pylab as plt
 import cPickle as pickle
+import gc
 
 def single_file_extract(filenum): 
     HOG_file = open(args.HOG_dir + ("%04d.txt" % filenum), "r")
@@ -34,15 +35,19 @@ def main():
     parser.add_argument('--HOG_dir', type=str, help='The directory where all the HOG features are stored.') 
     parser.add_argument('--num_files', type=int, help='The number of .txt files in the directory containing the HOG features.')
     parser.add_argument('--outfile', type=str, help='The name of the pickle file we output the dataset to.')
-    parser.add_argument('--
+    parser.add_argument('--num_split', type=int, help='The number of splits to create. The last split will be test. Other splits are so we do not have to load huge file into memory.')
     global args
     args = parser.parse_args()
-    tot_data = []
-    for filenum in xrange(1, args.num_files+ 1): 
-        tot_data += single_file_extract(filenum)
-        if filenum % 100 == 0: 
-            print "Finished processing " + str(filenum) + " files."
-    pickle.dump(tot_data, open(args.outfile, "w"))
+    num_split = args.num_split
+    for i in xrange(num_split):
+        gc.disable()
+        tot_data = []
+        for filenum in xrange(i*args.num_files/num_split + 1, (i + 1)*(args.num_files/num_split)+ 1): 
+            tot_data += single_file_extract(filenum)
+            if filenum % 100 == 0: 
+                print "Finished processing " + str(filenum) + " files."
+            pickle.dump(tot_data, open(("split%d" % i) + args.outfile, "w"))
+        gc.enable()
 
 if __name__ == "__main__":
     main()
