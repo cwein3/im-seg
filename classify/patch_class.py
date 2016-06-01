@@ -25,6 +25,7 @@ def convert_data():
     if args.mode == 'TRAIN':
         allowed_num = tot_examples/args.num_classes if args.allowed_num is None else args.allowed_num
     class_counts = Counter()
+    gc.disable()
     for ind, val in enumerate(data_arr): 
         class_name = val[3][0][0]   
         if class_counts[class_name] < allowed_num:
@@ -34,6 +35,7 @@ def convert_data():
             class_map[class_name] = len(class_map)
         if ind % 300 == 0: 
             print "Finished processing " + str(ind) + " patches."
+    gc.enable()
     random.shuffle(Xy_arr)
     num_classes = len(class_map)
     X = np.array([val[0] for val in Xy_arr])
