@@ -94,7 +94,7 @@ def perform_sa(
     
     for h in xrange(H):
         for w in xrange(W):
-            curr_assign[h, w] = np.random.multinomial(1, superpix_probs[seg_mat[h, w]]).argmax()
+            curr_assign[h, w] = np.argmax(superpix_probs[seg_mat[h, w]]) #np.random.multinomial(1, superpix_probs[seg_mat[h, w]]).argmax()
     
     cdef np.ndarray curr_loc_probs    
     cdef int neighbor_it
@@ -107,8 +107,9 @@ def perform_sa(
                 neighbor_assign, pix_grad, num_neighbors = neighbor_grad_assign(gray_im, h, w, curr_assign)
                 curr_probs = -np.log(curr_loc_probs)
                 for neighbor_it in xrange(num_neighbors): 
-                    add_val = d*eta0*np.exp(-alpha*np.max(pix_grad[neighbor_it] - t, 0))
+                    add_val = d*eta0*pix_grad[neighbor_it]#np.exp(-alpha*np.max(pix_grad[neighbor_it] - t, 0))
                     curr_probs += add_val
+                    #print(add_val)
                     curr_probs[neighbor_assign[neighbor_it]] -= add_val
                 curr_probs *= -1.0/temp
                 curr_probs -= np.amax(curr_probs)
@@ -125,7 +126,7 @@ def perform_sa(
             neighbor_assign, pix_grad, num_neighbors = neighbor_grad_assign(gray_im, h, w, curr_assign)
             curr_probs = -np.log(curr_loc_probs)
             for neighbor_it in xrange(num_neighbors):
-                add_val = d*eta0*np.exp(-alpha*np.max(pix_grad[neighbor_it] - t, 0))
+                add_val = d*eta0*pix_grad[neighbor_it]#np.exp(-alpha*np.max(pix_grad[neighbor_it] - t, 0))
                 curr_probs += add_val
                 curr_probs[neighbor_assign[neighbor_it]] -= add_val
             curr_assign[h, w] = np.argmax(-curr_probs)

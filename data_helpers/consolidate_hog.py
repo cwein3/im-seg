@@ -46,7 +46,7 @@ def main():
             tot_data += single_file_extract(filenum)
             if filenum % 100 == 0: 
                 print "Finished processing " + str(filenum) + " files."
-            pickle.dump(tot_data, open(("split%d" % i) + args.outfile, "w"))
+        pickle.dump(tot_data, open(("split%d" % i) + args.outfile, "w"))
         gc.enable()
 
 if __name__ == "__main__":

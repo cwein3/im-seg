@@ -15,11 +15,14 @@ from sknn.mlp import Classifier, Layer
 from collections import Counter
 import random
 import sklearn.metrics
+import gc
+
+allowed_classes = {u'bed', u'blind', u'bookshelf', u'cabinet', u'ceiling', u'floor', u'picture', u'sofa', u'table', u'television', u'wall', u'window'}
 
 def convert_data():
     data_arr = pickle.load(open(args.data, "r"))
     Xy_arr = []
-    class_map = {}
+    class_map = {} if args.name_map is None else pickle.load(open(args.name_map, "r"))
     tot_examples = len(data_arr)
     allowed_num = np.inf
     if args.mode == 'TRAIN':
@@ -28,12 +31,14 @@ def convert_data():
     gc.disable()
     for ind, val in enumerate(data_arr): 
         class_name = val[3][0][0]   
-        if class_counts[class_name] < allowed_num:
+        if class_name not in allowed_classes:
+	    continue
+	if class_counts[class_name] < allowed_num:
             class_counts[class_name] += 1
             Xy_arr.append((val[2], class_name))
         if class_name not in class_map:
             class_map[class_name] = len(class_map)
-        if ind % 300 == 0: 
+        if ind % 100000 == 0: 
             print "Finished processing " + str(ind) + " patches."
     gc.enable()
     random.shuffle(Xy_arr)
@@ -41,7 +46,8 @@ def convert_data():
     X = np.array([val[0] for val in Xy_arr])
     y = np.array([class_map[val[1]] for val in Xy_arr])
     
-    pickle.dump(class_map, open(args.name_map, "w"))
+    if args.name_map is None:
+    	pickle.dump(class_map, open(args.new_name_map, "w"))
 
     print "Classes to indices map:", class_map
     print "Class counts:", class_counts 
@@ -85,7 +91,8 @@ def main():
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate to use.')
     parser.add_argument('--num_classes', type=int, default=110, help='Number of total classes.')
     parser.add_argument('--allowed_num', type=int, help='The allowed number of training examples for one class.')
-    parser.add_argument('--name_map', type=str, default='classmap.pkl', help='Name of the pickle file which stores the class map.')
+    parser.add_argument('--name_map', type=str, default=None, help='Name of the pickle file which stores the class map.')
+    parser.add_argument('--new_name_map', type=str, default='classmap.pkl', help='Name of pickle file we dump class map to.')
     global args
     args = parser.parse_args()
     X, y, num_classes = convert_data()

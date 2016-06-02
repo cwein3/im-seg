@@ -24,7 +24,7 @@ pyximport.install(
 
 import sa_cy
 
-colors = [(1,1,1)] + [(random.random(),random.random(),random.random()) for i in xrange(255)]
+colors = [(random.random(),random.random(),random.random()) for i in xrange(255)]
 new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
 
 def assign_superpix_prob(im, network, descs):
@@ -188,7 +188,7 @@ def segment_im(imfile, featfile, network_file, d, eta0, alpha, t):
         descs.append((centers[0], centers[1], feat))
     
     seg_mask, pix_probs = assign_superpix_prob(im, network, descs)
-    assign = perform_sa_cy(im, (d, eta0, alpha, t), (seg_mask, pix_probs), np.linspace(1, 0.01, 2))
+    assign = perform_sa_cy(im, (d, eta0, alpha, t), (seg_mask, pix_probs), np.linspace(1, 0.01, 10))
     feat_f.close()    
     return assign
 
@@ -242,7 +242,7 @@ def main():
     parser.add_argument('--mode', type=str, default='SEGMENT', help='What function to call.')
     parser.add_argument('--d', type=float, default=3, help='Parameter in the crf, see NYU paper 1.')
     parser.add_argument('--eta0', type=float, default=10, help='See first NYU paper for parameter description.')
-    parser.add_argument('--alpha', type=float, default=4000, help='See first NYU paper for parameter description.')
+    parser.add_argument('--alpha', type=float, default=4, help='See first NYU paper for parameter description.')
     parser.add_argument('--t', type=float, default=0, help='See first NYU paper for parameter description.')
     parser.add_argument('--class_map', type=str, default='../classify/classmap.pkl', help='Class map.')
     args = parser.parse_args()
