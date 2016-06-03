@@ -11,7 +11,7 @@ ctypedef np.float64_t DTYPE_t
 
 @cython.boundscheck(False)
 def calc_pix_grad(
-        np.ndarray[DTYPE_t, ndim=2] im, 
+        np.ndarray[DTYPE_t, ndim=3] im, 
         int p1y,
         int p1x, 
         int p2y,
@@ -21,14 +21,14 @@ def calc_pix_grad(
     im: image in RGB
     p1, p2: tuples for the (y, x) of the image coords
     """
-    cdef DTYPE_t ret = np.abs(im[p1y, p1x] - im[p2y, p2x])
-    #ret = np.linalg.norm(im[p1[0], p1[1], :] - im[p2[0], p2[1], :])
+    #cdef DTYPE_t ret = np.abs(im[p1y, p1x] - im[p2y, p2x])
+    cdef DTYPE_t ret = np.exp(-0.001*np.linalg.norm(im[p1y, p1x, :] - im[p2y, p2x, :])**2)
     #ret /= 255**2
     #ret = 1000
     return ret
 
 def neighbor_grad_assign(
-        np.ndarray[DTYPE_t, ndim=2] im, 
+        np.ndarray[DTYPE_t, ndim=3] im, 
         int pointy,
         int pointx, 
         np.ndarray[DTYPE_t, ndim=2] curr_assign
@@ -85,7 +85,7 @@ def perform_sa(
     cdef int W = im.shape[1]
     num_classes = superpix_probs[0].shape[0]
     cdef np.ndarray curr_probs = np.zeros([num_classes,], dtype=np.float64)
-    cdef np.ndarray gray_im = skimage.color.rgb2gray(im)
+    cdef np.ndarray gray_im = im# skimage.color.rgb2gray(im)
  
     cdef int ind, h, w
     cdef DTYPE_t temp
@@ -111,11 +111,12 @@ def perform_sa(
                     curr_probs += add_val
                     #print(add_val)
                     curr_probs[neighbor_assign[neighbor_it]] -= add_val
-                curr_probs *= -1.0/temp
-                curr_probs -= np.amax(curr_probs)
-                curr_probs = np.exp(curr_probs)
-                curr_probs /= curr_probs.sum()
-                curr_assign[h, w] = np.random.multinomial(1, curr_probs).argmax()
+                curr_assign[h, w] = np.argmax(-curr_probs)
+                #curr_probs *= -1.0/temp
+                #curr_probs -= np.amax(curr_probs)
+                #curr_probs = np.exp(curr_probs)
+                #curr_probs /= curr_probs.sum()
+                #curr_assign[h, w] = np.random.multinomial(1, curr_probs).argmax()
         #if live_plot and (ind % plot_every == 0):
         #    plt.imshow(curr_assign, cmap=new_map)            
         #    plt.show()

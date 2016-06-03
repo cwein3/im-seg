@@ -68,8 +68,8 @@ def calc_pix_grad(im, p1, p2):
     im: image in RGB
     p1, p2: tuples for the (y, x) of the image coords
     """
-    ret = np.abs(im[p1[0], p1[1]] - im[p2[0], p2[1]])
-    #ret = np.linalg.norm(im[p1[0], p1[1], :] - im[p2[0], p2[1], :])
+    #ret = np.abs(im[p1[0], p1[1]] - im[p2[0], p2[1]])
+    ret = np.exp(-0.001*np.sum((im[p1[0], p1[1], :] - im[p2[0], p2[1], :])**2)) #np.linalg.norm(im[p1[0], p1[1], :] - im[p2[0], p2[1], :])
     #ret /= 255**2
     #ret = 1000
     return ret
@@ -218,7 +218,7 @@ def find_acc(filenum, network_file):
 
 def plot_pix_grads(imfile):
     im = skimage.io.imread(imfile)
-    im = skimage.color.rgb2gray(im)
+    #im = skimage.color.rgb2gray(im)
     H = im.shape[0]
     W = im.shape[1]
     dummy_assign = np.zeros((H, W))
