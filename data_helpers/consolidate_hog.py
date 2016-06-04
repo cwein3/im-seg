@@ -44,12 +44,14 @@ def main():
     parser.add_argument('--num_classes', type=int, help='The number of most common classes which we take.')
     global args
     args = parser.parse_args()
+    permutes = random.shuffle(range(num_files))
     num_split = args.num_split
+    train_test = scipy.io.loadmat(args.SUN_dir + "splits.mat")
     for i in xrange(num_split):
         gc.disable()
         tot_data = []
         for filenum in xrange(i*args.num_files/num_split + 1, (i + 1)*(args.num_files/num_split)+ 1): 
-            tot_data += single_file_extract(filenum)
+            tot_data += single_file_extract(permutes(filenum))
             if filenum % 100 == 0: 
                 print "Finished processing " + str(filenum) + " files."
         pickle.dump(tot_data, open(("split%d" % i) + args.outfile, "w"))

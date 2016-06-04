@@ -34,7 +34,7 @@ def assign_superpix_prob(im, network, descs):
     descs: list of tuple of (desc_x, desc_y, sift feature)
     """
     im = skimage.color.rgb2gray(im)
-    seg_mask = skimage.segmentation.felzenszwalb(im, scale=500, min_size=40)
+    seg_mask = skimage.segmentation.felzenszwalb(im, scale=100)
     superpix_probs = {} # map a superpixel to the average of probabilities for descriptors falling in it
     superpix_counter = collections.Counter()
     predict_descs = np.array([desc[2] for desc in descs])
