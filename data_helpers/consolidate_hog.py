@@ -29,7 +29,8 @@ def single_file_extract(filenum):
         HOG_part = np.array(map(float, filter(bool, parts[2].strip().split(','))))
         # seg_labels goes by y first, then x
         seg_label = names[seg_labels[int(centers[1]) - 1, int(centers[0]) - 1] - 1]
-        dat_list.append((filenum, centers, HOG_part, seg_label))
+   	if not args.count_classes_only:
+	    dat_list.append((filenum, centers, HOG_part, seg_label))
         class_counts[seg_label[0][0]] += 1
     HOG_file.close()
     return dat_list
@@ -42,6 +43,7 @@ def main():
     parser.add_argument('--num_split', type=int, help='The number of splits to create. The last split will be test. Other splits are so we do not have to load huge file into memory.')
     parser.add_argument('--names_map', type=str, help='The name of the file we output the list of class names to.')
     parser.add_argument('--num_classes', type=int, help='The number of most common classes which we take.')
+    parser.add_argument('--count_classes_only', type=bool, default=True, help='Whether or not to count the number of classes only.')
     global args
     args = parser.parse_args()
     num_split = args.num_split
@@ -58,7 +60,8 @@ def main():
                 tot_data += single_file_extract(inds[filenum])
                 if filenum % 100 == 0: 
                     print "Finished processing " + str(filenum) + " files."
-            pickle.dump(tot_data, open(type + ("split%d" % i) + args.outfile, "w"))
+            if not args.count_classes_only:
+	        pickle.dump(tot_data, open(type + ("split%d" % i) + args.outfile, "w"))
             gc.enable()
         
     top_dict = dict(class_counts.most_common(args.num_classes))

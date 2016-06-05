@@ -99,13 +99,14 @@ def main():
                 model = train(X, y, num_classes, model, lr)
 		lr *= args.lr_decay 
     if args.mode == 'PREDICT':
-	all_predict = []
-	all_labels = []
+	all_predict = np.array([])
+	all_labels = np.array([])
 	for split in xrange(args.num_split):
-	    data_loc = args.data_dir + (predict_set + "split%d" % args.num_split) + args.data
+	    data_loc = args.data_dir + (args.predict_set + "split%d" % split) + args.data
             X, y = convert_data(data_loc, class_map)
-            all_predict += predict_split(X, y, model)
-	    all_labels += y
+            all_predict = np.concatenate((all_predict, predict_split(X, y, model)), axis=0)
+	    all_labels = np.concatenate((all_labels, y), axis=0)
+	n_samples = all_labels.size
         err = float(np.sum(all_predict != all_labels))/n_samples
         print "Prediction error of ", err, "."
         cm = sklearn.metrics.confusion_matrix(all_labels, all_predict)

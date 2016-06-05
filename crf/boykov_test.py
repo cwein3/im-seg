@@ -1,6 +1,3 @@
-"""
-Given a the appearance model and the image, we first segment into rough superpixels. Then we assign class probabilities for these superpixels, and using this we find the MAP assignment of the conditional random field.
-"""
 import cv
 import cv2
 import numpy as np
@@ -17,6 +14,8 @@ import matplotlib.colors
 import random
 import pdb
 import gco_python.pygco 
+import boykov_seg
+
 
 colors = [(random.random(),random.random(),random.random()) for i in xrange(256)]
 new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
@@ -137,12 +136,18 @@ def find_acc(filenum, network_file, colors, should_save=False, save_name=None, t
 
     numpix = assign.shape[0]*assign.shape[1]
     acc_map = 2*(conv_labels != assign)
-    acc_map[conv_labels >= original_len] = 1
+    valid_mask = (conv_labels >= original_len) 
+    acc_map[valid_mask] = 1
+
+    y_flat = conv_labels[valid_mask].flatten()
+    assign_flat = assign[valid_mask].flatten()
+    cm = sklearn.metrics.confusion_matrix(y_flat, assign_flat)
+    row_sum = cm.sum(axis=1).reshape(cm.shape[0], 1)
 
     if should_save:
 	plt.imsave(truth_name, acc_map.astype(float)/2, cmap='gray') 
 
-    return acc_map
+    return acc_map, cm, row_sum
 
 def main():
     global args
@@ -150,22 +155,50 @@ def main():
     parser.add_argument('--SUN_dir', type=str, help='The directory of where SUNRGBD is stored.')
     parser.add_argument('--feat_dir', type=str, help='The directory where all the HOG features are stored.') 
     parser.add_argument('--network_path', type=str, help='Path of the neural network we use.')
-    parser.add_argument('--imfile', type=int, help='Which image we decide to use.')
-    parser.add_argument('--mode', type=str, default='SEGMENT', help='What function to call.')
+    parser.add_argument('--predict_set', type=int, help='Which image we decide to use.')
+    parser.add_argument('--num_predict', type=int, default=654, help='Number of images to predict on.')
     parser.add_argument('--d', type=float, default=1, help='Parameter in the crf, see NYU paper 1.')
     parser.add_argument('--eta0', type=float, default=10, help='See first NYU paper for parameter description.')
     parser.add_argument('--alpha', type=float, default=10, help='See first NYU paper for parameter description.')
     parser.add_argument('--t', type=float, default=0, help='See first NYU paper for parameter description.')
     parser.add_argument('--class_map', type=str, default='../classify/classmap.pkl', help='Class map.')
+    parser.add_argument('--save_inds', type=str, default=None, help='The indices of the image segmentations to save. If this is none, save in new_save_inds.')
+    parser.add_argument('--new_save_inds', type=str, help='Where to save the new randomly generated indies to save.')
+    parser.add_argument('--color_map', type=str, default=None, help='Where to find the color map.')
+    parser.add_argument('--new_color_map', type=str, help='Where to save color map if none exists right now.')
+    parser.add_argument('--im_out', type=str, help='Directory for where to output the saved random images.')
     args = parser.parse_args()
-    imfile = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (args.imfile, args.imfile))
-    featfile = args.feat_dir + ('%04d.txt' % args.imfile)
+    save_inds = pickle.load(open(args.save_inds, "r")) if args.save_inds is not None else (np.random.random((args.num_predict,)) < 0.1)
+    color_map = new_map if args.color_map is None else pickle.load(open(args.color_map, "r"))
+    if args.new_save_inds is not None:
+	pickle.dump(save_inds, open(args.new_save_inds, "w"))
+    if args.new_color_map is not None:
+	pickle.dump(color_map, open(args.new_color_map, "w"))
+    train_test = scipy.io.loadmat(args.SUN_dir + "splits.mat")
+    split = train_test[args.predict_set + 'Ndxs']
     network_file = args.network_path
-    if args.mode == 'SEGMENT':
-        find_acc(args.imfile, network_file, new_map)
-    if args.mode == 'GRADS':
-        plot_pix_grads(imfile)
-
+    num_classes = len(pickle.load(open(args.class_map, "r")))
+    frequencies_tot = np.zeros((num_classes, 1))
+    cm = np.zeros((num_classes, num_classes))
+    running_total = 0
+    curr_acc = float(0)
+    for i in xrange(1, num_predict + 1):
+        filenum = split[i]
+	save_name = args.im_out + ("seg%d.jpg" % filenum)
+	truth_name = args.im_out + ("truth%d.jpg" % filenum)
+        acc_map, conf_map, frequencies = find_acc(filenum, network_file, color_map, should_save=save_inds[i], save_name=save_name, truth_name=truth_name)
+        total_pix = frequencies.sum()
+        curr_acc = (curr_acc*running_total + np.sum(acc_map == 0))/(running_total + total_pix)
+	running_total += total_pix
+	frequencies_tot += frequencies
+	cm += conf_map
+    cm = cm.astype(float)/frequencies_tot
+    plt.matshow(cm)
+    plt.title("Confusion Matrix")
+    plt.colorbar()
+    plt.show()
+    print "Final frequencies", frequencies_tot
+ 
 if __name__ == '__main__':
     main()
 
