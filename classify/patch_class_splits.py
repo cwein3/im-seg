@@ -39,20 +39,23 @@ def convert_data(data_loc, class_map):
         if ind % 100000 == 0: 
             print "Finished processing " + str(ind) + " patches."
     # jankify
+    curr_len = len(Xy_arr)
     for key in class_map:
 	if class_counts[key] == 0:
 	    class_counts[key] += 1
 	    Xy_arr.append((np.zeros(Xy_arr[-1][0].shape), key))
     gc.enable()
+    w = np.ones((len(Xy_arr),))
+    w[curr_len:] = 0
     random.shuffle(Xy_arr)
     X = np.array([val[0] for val in Xy_arr])
     y = np.array([class_map[val[1]] for val in Xy_arr])
     
     print "Classes to indices map:", class_map
     print "Class counts:", class_counts 
-    return X, y 
+    return X, y, w 
 
-def train(X, y, num_classes, model=None, lr=0.01):
+def train(X, y, w, num_classes, model=None, lr=0.01):
     if model is None:
         model = Classifier(
             layers=[
@@ -62,7 +65,7 @@ def train(X, y, num_classes, model=None, lr=0.01):
             learning_rate=lr,
             n_iter=1,
             verbose=1)
-    model.fit(X, y)
+    model.fit(X, y, w=w)
     pickle.dump(model, open(args.outfile, "w"))
     return model
 
@@ -98,15 +101,15 @@ def main():
 	for _ in xrange(args.n_iter):
             for split in xrange(args.num_split):
                 data_loc = args.data_dir + ("trainsplit%d" % split) + args.data
-                X, y = convert_data(data_loc, class_map)
-                model = train(X, y, num_classes, model, lr)
+                X, y, w = convert_data(data_loc, class_map)
+                model = train(X, y, w, num_classes, model, lr)
 		lr *= args.lr_decay 
     if args.mode == 'PREDICT':
 	all_predict = np.array([])
 	all_labels = np.array([])
 	for split in xrange(args.num_split):
 	    data_loc = args.data_dir + (args.predict_set + "split%d" % split) + args.data
-            X, y = convert_data(data_loc, class_map)
+            X, y, _ = convert_data(data_loc, class_map)
             all_predict = np.concatenate((all_predict, predict_split(X, y, model)), axis=0)
 	    all_labels = np.concatenate((all_labels, y), axis=0)
 	n_samples = all_labels.size

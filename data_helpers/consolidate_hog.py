@@ -45,7 +45,9 @@ def main():
     parser.add_argument('--num_split', type=int, help='The number of splits to create. The last split will be test. Other splits are so we do not have to load huge file into memory.')
     parser.add_argument('--names_map', type=str, help='The name of the file we output the list of class names to.')
     parser.add_argument('--num_classes', type=int, help='The number of most common classes which we take.')
-    parser.add_argument('--count_classes_only', type=bool, default=True, help='Whether or not to count the number of classes only.')
+    parser.add_argument('--count_classes_only', type=bool, default=False, help='Whether or not to count the number of classes only.')
+    parser.add_argument('--hardcode', type=bool, default=False, help='Whether or not to use hardcoded class map.')
+    parser.add_argument('--feat_map', type=str, help='Where to store example features map.')
     global args
     args = parser.parse_args()
     num_split = args.num_split
