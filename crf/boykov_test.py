@@ -183,7 +183,7 @@ def main():
     train_test = scipy.io.loadmat(args.SUN_dir + "splits.mat")
     split = train_test[args.predict_set + 'Ndxs']
     network = pickle.load(open(args.network_path, "r"))
-    num_classes = 11 if args.hardcode else len(pickle.load(open(class_map, "r")))
+    num_classes = 11 if args.hardcode else len(pickle.load(open(args.class_map, "r")))
     frequencies_tot = np.zeros((num_classes, 1))
     cm = np.zeros((num_classes, num_classes))
     running_total = 0
