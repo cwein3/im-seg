@@ -10,6 +10,7 @@ import skimage.io
 import skimage.color
 import skimage.feature
 import matplotlib.pylab as plt
+import random
 import cPickle as pickle
 import gc
 import collections
@@ -37,25 +38,29 @@ def main():
     parser = ap.ArgumentParser()
     parser.add_argument('--SUN_dir', type=str, help='The directory of where SUNRGBD is stored.')
     parser.add_argument('--HOG_dir', type=str, help='The directory where all the HOG features are stored.') 
-    parser.add_argument('--num_files', type=int, help='The number of .txt files in the directory containing the HOG features.')
     parser.add_argument('--outfile', type=str, help='The name of the pickle file we output the dataset to.')
     parser.add_argument('--num_split', type=int, help='The number of splits to create. The last split will be test. Other splits are so we do not have to load huge file into memory.')
     parser.add_argument('--names_map', type=str, help='The name of the file we output the list of class names to.')
     parser.add_argument('--num_classes', type=int, help='The number of most common classes which we take.')
     global args
     args = parser.parse_args()
-    permutes = random.shuffle(range(num_files))
     num_split = args.num_split
     train_test = scipy.io.loadmat(args.SUN_dir + "splits.mat")
-    for i in xrange(num_split):
-        gc.disable()
-        tot_data = []
-        for filenum in xrange(i*args.num_files/num_split + 1, (i + 1)*(args.num_files/num_split)+ 1): 
-            tot_data += single_file_extract(permutes(filenum))
-            if filenum % 100 == 0: 
-                print "Finished processing " + str(filenum) + " files."
-        pickle.dump(tot_data, open(("split%d" % i) + args.outfile, "w"))
-        gc.enable()
+    for type in ['train', 'test']:
+        inds = train_test[type + 'Ndxs']
+	num_files = len(inds)
+	num_per_split = num_files/num_split
+	for i in xrange(num_split):
+            gc.disable()
+            tot_data = []
+	    end_ind = min((i + 1)*num_per_split + 1, num_files + 1)
+            for filenum in xrange(i*num_per_split + 1,end_ind): 
+                tot_data += single_file_extract(inds[filenum])
+                if filenum % 100 == 0: 
+                    print "Finished processing " + str(filenum) + " files."
+            pickle.dump(tot_data, open(type + ("split%d" % i) + args.outfile, "w"))
+            gc.enable()
+        
     top_dict = dict(class_counts.most_common(args.num_classes))
     print "Counts of different classes:", top_dict
     count_key = {}
