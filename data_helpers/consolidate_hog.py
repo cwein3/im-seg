@@ -55,18 +55,20 @@ def main():
     for type in ['train', 'test']:
         inds = train_test[type + 'Ndxs']
 	num_files = len(inds)
-	num_per_split = num_files/num_split
+        random.shuffle(inds)
+	tot_data = []
+	gc.disable()
+	for filenum in xrange(num_files):
+	    tot_data += single_file_extract(inds[filenum])
+	    if filenum % 100 == 0:
+		print "Finished processing " + str(filenum) + " files."
+	random.shuffle(tot_data)
+	gc.enable()
+	num_per_split = len(tot_data)/num_split
 	for i in xrange(num_split):
-            gc.disable()
-            tot_data = []
-	    end_ind = min((i + 1)*num_per_split + 1, num_files + 1)
-            for filenum in xrange(i*num_per_split + 1,end_ind): 
-                tot_data += single_file_extract(inds[filenum])
-                if filenum % 100 == 0: 
-                    print "Finished processing " + str(filenum) + " files."
-            if not args.count_classes_only:
-	        pickle.dump(tot_data, open(type + ("split%d" % i) + args.outfile, "w"))
-            gc.enable()
+	    end_ind = min((i + 1)*num_per_split, len(tot_data))
+	    if not args.count_classes_only:
+	        pickle.dump(tot_data[i*num_per_split:end_ind], open(type + ("split%d" % i) + args.outfile, "w"))
         
     top_dict = dict(class_counts.most_common(args.num_classes))
     print "Counts of different classes:", top_dict

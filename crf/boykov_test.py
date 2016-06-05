@@ -20,14 +20,19 @@ import sklearn.metrics
 colors = [(random.random(),random.random(),random.random()) for i in xrange(256)]
 new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
 
+allowed_classes = {u'bed':0, u'bookshelf':1, u'cabinet':2, u'ceiling':3, u'floor':4, u'picture':5, u'sofa':6, u'table':7, u'television':8, u'wall':9, u'window':10}
+
 def assign_superpix_prob(im, network, descs):
     """
     im: image, assumed to be in grayscale
     network: neural network for appearance classification
     descs: list of tuple of (desc_x, desc_y, sift feature)
     """
-    im = skimage.color.rgb2gray(im)
-    seg_mask = skimage.segmentation.felzenszwalb(im, scale=100)
+    if args.seg_type == 'FELZENSZWALB':
+	im = skimage.io.rgb2gray(im)
+	seg_mask = skimage.segmentation.felzenszwalb(im, scale=100)
+    if args.seg_type == 'QUICKSHIFT':
+        seg_mask = skimage.segmentation.quickshift(im)
     superpix_probs = {} # map a superpixel to the average of probabilities for descriptors falling in it
     superpix_counter = collections.Counter()
     predict_descs = np.array([desc[2] for desc in descs])
@@ -91,14 +96,14 @@ def boykov(im, crf_params, loc_probs, plot_every=1, live_plot=False):
     grad_hor_T = np.zeros((W, H), dtype=np.int32)
     grad_vert_T[:] = grad_vert.T
     grad_hor_T[:] = grad_hor.T
-   
+  
+    #print probs_arr, grad_vert_T, grad_hor_T 
     lab_assign = gco_python.pygco.cut_simple_vh(costs, pairwise_cost, grad_vert_T, grad_hor_T, algorithm='expansion')
     return lab_assign
 
-def segment_im(imfile, featfile, network_file, d, eta0, alpha, t):
+def segment_im(imfile, featfile, network, d, eta0, alpha, t):
     feat_f = open(featfile, "r")
     im = skimage.io.imread(imfile)    
-    network = pickle.load(open(network_file, "r"))
     descs = []
         
     for line in feat_f: 
@@ -112,18 +117,17 @@ def segment_im(imfile, featfile, network_file, d, eta0, alpha, t):
     feat_f.close()    
     return assign
 
-def find_acc(filenum, network_file, colors, should_save=False, save_name=None, truth_name=None):
+def find_acc(filenum, network, colors, should_save=False, save_name=None, truth_name=None):
     mat_path = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/seg.mat' % filenum)
     seg_labels = scipy.io.loadmat(mat_path)['seglabel']
     names = scipy.io.loadmat(mat_path)['names']
     imfile = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (filenum, filenum))
     featfile = args.feat_dir + ('%04d.txt' % filenum)
-    network_file = args.network_path
-    assign = segment_im(imfile, featfile, network_file, args.d, args.eta0, args.alpha, args.t)
+    assign = segment_im(imfile, featfile, network, args.d, args.eta0, args.alpha, args.t)
     assign = assign.T
     if should_save:
 	plt.imsave(save_name, assign, cmap=colors)
-    class_map = pickle.load(open(args.class_map, "r"))
+    class_map = allowed_classes.copy() if args.hardcode else pickle.load(open(args.class_map, "r"))
     conv_labels = np.zeros(assign.shape)
     original_len = len(class_map)
     for h in xrange(assign.shape[0]):
@@ -158,15 +162,17 @@ def main():
     parser.add_argument('--predict_set', type=str, help='Which set we predict on.')
     parser.add_argument('--num_predict', type=int, default=654, help='Number of images to predict on.')
     parser.add_argument('--d', type=float, default=1, help='Parameter in the crf, see NYU paper 1.')
-    parser.add_argument('--eta0', type=float, default=20, help='See first NYU paper for parameter description.')
-    parser.add_argument('--alpha', type=float, default=0.01, help='See first NYU paper for parameter description.')
+    parser.add_argument('--eta0', type=float, default=10, help='See first NYU paper for parameter description.')
+    parser.add_argument('--alpha', type=float, default=0.02, help='See first NYU paper for parameter description.')
     parser.add_argument('--t', type=float, default=0, help='See first NYU paper for parameter description.')
     parser.add_argument('--class_map', type=str, default='../classify/classmap.pkl', help='Class map.')
+    parser.add_argument('--hardcode', type=bool, default=False, help='Whether to use hardcoded class map.')
     parser.add_argument('--save_inds', type=str, default=None, help='The indices of the image segmentations to save. If this is none, save in new_save_inds.')
     parser.add_argument('--new_save_inds', type=str, help='Where to save the new randomly generated indies to save.')
     parser.add_argument('--color_map', type=str, default=None, help='Where to find the color map.')
     parser.add_argument('--new_color_map', type=str, help='Where to save color map if none exists right now.')
     parser.add_argument('--im_out', type=str, help='Directory for where to output the saved random images.')
+    parser.add_argument('--seg_type', type=str, default='QUICKSHIFT', help='Superpixel segmentation type to use.')
     args = parser.parse_args()
     save_inds = pickle.load(open(args.save_inds, "r")) if args.save_inds is not None else (np.random.random((args.num_predict,)) < 0.1)
     color_map = new_map if args.color_map is None else pickle.load(open(args.color_map, "r"))
@@ -176,8 +182,8 @@ def main():
 	pickle.dump(color_map, open(args.new_color_map, "w"))
     train_test = scipy.io.loadmat(args.SUN_dir + "splits.mat")
     split = train_test[args.predict_set + 'Ndxs']
-    network_file = args.network_path
-    num_classes = len(pickle.load(open(args.class_map, "r")))
+    network = pickle.load(open(args.network_path, "r"))
+    num_classes = 11 if args.hardcode else len(pickle.load(open(class_map, "r")))
     frequencies_tot = np.zeros((num_classes, 1))
     cm = np.zeros((num_classes, num_classes))
     running_total = 0
@@ -186,7 +192,7 @@ def main():
         filenum = split[i]
 	save_name = args.im_out + ("seg%d.jpg" % filenum)
 	truth_name = args.im_out + ("truth%d.jpg" % filenum)
-        acc_map, conf_map, frequencies = find_acc(filenum, network_file, color_map, should_save=save_inds[i], save_name=save_name, truth_name=truth_name)
+        acc_map, conf_map, frequencies = find_acc(filenum, network, color_map, should_save=save_inds[i], save_name=save_name, truth_name=truth_name)
         total_pix = frequencies.sum()
         curr_acc = (curr_acc*running_total + np.sum(acc_map == 0))/(running_total + total_pix)
 	running_total += total_pix

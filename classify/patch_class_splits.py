@@ -18,7 +18,7 @@ import sklearn.metrics
 import gc
 import types
 
-allowed_classes = {u'bed':0, u'blind':1, u'bookshelf':2, u'cabinet':3, u'ceiling':4, u'floor':5, u'picture':6, u'sofa':7, u'table':8, u'television':9, u'wall':10, u'window':11}
+allowed_classes = {u'bed':0, u'bookshelf':1, u'cabinet':2, u'ceiling':3, u'floor':4, u'picture':5, u'sofa':6, u'table':7, u'television':8, u'wall':9, u'window':10}
 
 def convert_data(data_loc, class_map):
     data_arr = pickle.load(open(data_loc, "r"))
@@ -65,8 +65,10 @@ def train(X, y, w, num_classes, model=None, lr=0.01):
             learning_rate=lr,
             n_iter=1,
             verbose=1)
-    model.fit(X, y, w=w)
+    model.fit(X, y)#, w=w)
     pickle.dump(model, open(args.outfile, "w"))
+    labels = model.predict(X).flatten()
+    print "Split accuracy", float(np.sum(labels == y))/X.shape[0]
     return model
 
 def predict_split(X, y, model):
@@ -112,18 +114,18 @@ def main():
             X, y, _ = convert_data(data_loc, class_map)
             all_predict = np.concatenate((all_predict, predict_split(X, y, model)), axis=0)
 	    all_labels = np.concatenate((all_labels, y), axis=0)
-	n_samples = all_labels.size
-        err = float(np.sum(all_predict != all_labels))/n_samples
-        print "Prediction error of ", err, "."
-        cm = sklearn.metrics.confusion_matrix(all_labels, all_predict)
-        row_sum = cm.sum(axis=1).reshape(cm.shape[0], 1)
-        print "Frequencies of each class:", row_sum
-        cm = cm.astype(float)/row_sum
-        plt.matshow(cm)
-        plt.title("Confusion Matrix")
-        plt.colorbar()
-        plt.show()
-   
+       	n_samples = all_labels.size
+       	err = float(np.sum(all_predict != all_labels))/n_samples
+       	print "Prediction error of ", err, "."
+       	cm = sklearn.metrics.confusion_matrix(all_labels, all_predict)
+       	row_sum = cm.sum(axis=1).reshape(cm.shape[0], 1)
+       	print "Frequencies of each class:", row_sum
+       	cm = cm.astype(float)/row_sum
+       	plt.matshow(cm)
+       	plt.title("Confusion Matrix")
+       	plt.colorbar()
+       	plt.show()
+       	   
        
 if __name__ == "__main__":
     main()
