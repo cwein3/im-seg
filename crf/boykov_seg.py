@@ -99,7 +99,7 @@ def boykov(im, crf_params, loc_probs, plot_every=1, live_plot=False):
 
 def segment_im(imfile, featfile, network_file, d, eta0, alpha, t):
     feat_f = open(featfile, "r")
-    im = skimage.imread(imfile)    
+    im = skimage.io.imread(imfile)    
     network = pickle.load(open(network_file, "r"))
     descs = []
         
@@ -114,7 +114,7 @@ def segment_im(imfile, featfile, network_file, d, eta0, alpha, t):
     feat_f.close()    
     return assign
 
-def find_acc(filenum, network_file, colors, should_save=False, save_name=None, truth_name=None):
+def find_acc(filenum, network_file):
     mat_path = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/seg.mat' % filenum)
     seg_labels = scipy.io.loadmat(mat_path)['seglabel']
     names = scipy.io.loadmat(mat_path)['names']
@@ -123,11 +123,10 @@ def find_acc(filenum, network_file, colors, should_save=False, save_name=None, t
     network_file = args.network_path
     assign = segment_im(imfile, featfile, network_file, args.d, args.eta0, args.alpha, args.t)
     assign = assign.T
-    if should_save:
-	plt.imsave(save_name, assign, cmap=colors)
+    plt.imshow(assign, cmap=new_map)
+    plt.show()
     class_map = pickle.load(open(args.class_map, "r"))
     conv_labels = np.zeros(assign.shape)
-    original_len = len(class_map)
     for h in xrange(assign.shape[0]):
         for w in xrange(assign.shape[1]):
             curr_name = names[seg_labels[h, w] - 1][0][0]
@@ -136,13 +135,11 @@ def find_acc(filenum, network_file, colors, should_save=False, save_name=None, t
             conv_labels[h, w] = class_map[curr_name]
 
     numpix = assign.shape[0]*assign.shape[1]
-    acc_map = 2*(conv_labels != assign)
-    acc_map[conv_labels >= original_len] = 1
+    acc_map = (conv_labels == assign)
+    plt.imshow(acc_map, cmap=new_map)
+    plt.show()
 
-    if should_save:
-	plt.imsave(truth_name, acc_map.astype(float)/2, cmap='gray') 
-
-    return acc_map
+    print "Pixel accuracy:", float(np.sum(acc_map))/numpix
 
 def main():
     global args
@@ -162,10 +159,9 @@ def main():
     featfile = args.feat_dir + ('%04d.txt' % args.imfile)
     network_file = args.network_path
     if args.mode == 'SEGMENT':
-        find_acc(args.imfile, network_file, new_map)
+        find_acc(args.imfile, network_file)
     if args.mode == 'GRADS':
         plot_pix_grads(imfile)
 
 if __name__ == '__main__':
     main()
-

@@ -18,6 +18,8 @@ import sklearn.metrics
 import gc
 import types
 
+allowed_classes = {u'bed':0, u'blind':1, u'bookshelf':2, u'cabinet':3, u'ceiling':4, u'floor':5, u'picture':6, u'sofa':7, u'table':8, u'television':9, u'wall':10, u'window':11}
+
 def convert_data(data_loc, class_map):
     data_arr = pickle.load(open(data_loc, "r"))
     Xy_arr = []
@@ -61,13 +63,13 @@ def train(X, y, num_classes, model=None, lr=0.01):
             n_iter=1,
             verbose=1)
     model.fit(X, y)
-    #fit_new(model, X, y, num_classes)
     pickle.dump(model, open(args.outfile, "w"))
     return model
 
 def predict_split(X, y, model):
     labels = model.predict(X).flatten()
     n_samples = X.shape[0]
+    print "Split accuracy", float(np.sum(labels == y))/n_samples
     return labels
 
 def main():
@@ -85,9 +87,10 @@ def main():
     parser.add_argument('--num_split', type=int, default='13', help='The number of training splits to do.')
     parser.add_argument('--predict_set', type=str, default='test', help='Whether we predict on train or test.')
     parser.add_argument('--lr_decay', type=float, default=0.75, help='Learning rate decay every time we pass over a split.')
+    parser.add_argument('--hardcode', type=bool, default=False, help='Whether to hardcode allowed number of classes.')
     global args
     args = parser.parse_args()
-    class_map = pickle.load(open(args.name_map, "r"))
+    class_map = allowed_classes if args.hardcode else pickle.load(open(args.name_map, "r"))
     num_classes = len(class_map)
     model = None if args.old_model is None else pickle.load(open(args.old_model, "r"))
     if args.mode == 'TRAIN':

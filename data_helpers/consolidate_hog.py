@@ -28,6 +28,8 @@ def single_file_extract(filenum):
         centers = (float(parts[0]), float(parts[1]))
         HOG_part = np.array(map(float, filter(bool, parts[2].strip().split(','))))
         # seg_labels goes by y first, then x
+	if seg_labels[int(centers[1]) -1, int(centers[0]) - 1] == 0: 
+	    continue
         seg_label = names[seg_labels[int(centers[1]) - 1, int(centers[0]) - 1] - 1]
    	if not args.count_classes_only:
 	    dat_list.append((filenum, centers, HOG_part, seg_label))

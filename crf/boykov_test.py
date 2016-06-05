@@ -15,7 +15,7 @@ import random
 import pdb
 import gco_python.pygco 
 import boykov_seg
-
+import sklearn.metrics
 
 colors = [(random.random(),random.random(),random.random()) for i in xrange(256)]
 new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
@@ -92,13 +92,12 @@ def boykov(im, crf_params, loc_probs, plot_every=1, live_plot=False):
     grad_vert_T[:] = grad_vert.T
     grad_hor_T[:] = grad_hor.T
    
-    print grad_vert_T, grad_hor_T 
     lab_assign = gco_python.pygco.cut_simple_vh(costs, pairwise_cost, grad_vert_T, grad_hor_T, algorithm='expansion')
     return lab_assign
 
 def segment_im(imfile, featfile, network_file, d, eta0, alpha, t):
     feat_f = open(featfile, "r")
-    im = skimage.imread(imfile)    
+    im = skimage.io.imread(imfile)    
     network = pickle.load(open(network_file, "r"))
     descs = []
         
@@ -117,8 +116,8 @@ def find_acc(filenum, network_file, colors, should_save=False, save_name=None, t
     mat_path = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/seg.mat' % filenum)
     seg_labels = scipy.io.loadmat(mat_path)['seglabel']
     names = scipy.io.loadmat(mat_path)['names']
-    imfile = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (args.imfile, args.imfile))
-    featfile = args.feat_dir + ('%04d.txt' % args.imfile)
+    imfile = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (filenum, filenum))
+    featfile = args.feat_dir + ('%04d.txt' % filenum)
     network_file = args.network_path
     assign = segment_im(imfile, featfile, network_file, args.d, args.eta0, args.alpha, args.t)
     assign = assign.T
@@ -136,12 +135,13 @@ def find_acc(filenum, network_file, colors, should_save=False, save_name=None, t
 
     numpix = assign.shape[0]*assign.shape[1]
     acc_map = 2*(conv_labels != assign)
-    valid_mask = (conv_labels >= original_len) 
-    acc_map[valid_mask] = 1
+    invalid_mask = (conv_labels >= original_len) 
+    valid_mask = (conv_labels < original_len)
+    acc_map[invalid_mask] = 1
 
     y_flat = conv_labels[valid_mask].flatten()
     assign_flat = assign[valid_mask].flatten()
-    cm = sklearn.metrics.confusion_matrix(y_flat, assign_flat)
+    cm = sklearn.metrics.confusion_matrix(y_flat, assign_flat, labels=range(original_len))
     row_sum = cm.sum(axis=1).reshape(cm.shape[0], 1)
 
     if should_save:
@@ -155,11 +155,11 @@ def main():
     parser.add_argument('--SUN_dir', type=str, help='The directory of where SUNRGBD is stored.')
     parser.add_argument('--feat_dir', type=str, help='The directory where all the HOG features are stored.') 
     parser.add_argument('--network_path', type=str, help='Path of the neural network we use.')
-    parser.add_argument('--predict_set', type=int, help='Which image we decide to use.')
+    parser.add_argument('--predict_set', type=str, help='Which set we predict on.')
     parser.add_argument('--num_predict', type=int, default=654, help='Number of images to predict on.')
     parser.add_argument('--d', type=float, default=1, help='Parameter in the crf, see NYU paper 1.')
-    parser.add_argument('--eta0', type=float, default=10, help='See first NYU paper for parameter description.')
-    parser.add_argument('--alpha', type=float, default=10, help='See first NYU paper for parameter description.')
+    parser.add_argument('--eta0', type=float, default=20, help='See first NYU paper for parameter description.')
+    parser.add_argument('--alpha', type=float, default=0.01, help='See first NYU paper for parameter description.')
     parser.add_argument('--t', type=float, default=0, help='See first NYU paper for parameter description.')
     parser.add_argument('--class_map', type=str, default='../classify/classmap.pkl', help='Class map.')
     parser.add_argument('--save_inds', type=str, default=None, help='The indices of the image segmentations to save. If this is none, save in new_save_inds.')
@@ -182,7 +182,7 @@ def main():
     cm = np.zeros((num_classes, num_classes))
     running_total = 0
     curr_acc = float(0)
-    for i in xrange(1, num_predict + 1):
+    for i in xrange(args.num_predict):
         filenum = split[i]
 	save_name = args.im_out + ("seg%d.jpg" % filenum)
 	truth_name = args.im_out + ("truth%d.jpg" % filenum)
@@ -198,6 +198,7 @@ def main():
     plt.colorbar()
     plt.show()
     print "Final frequencies", frequencies_tot
+    print "Pixel accuracy", curr_acc
  
 if __name__ == '__main__':
     main()
