@@ -78,7 +78,7 @@ def perform_sa(
     
     for h in xrange(H):
         for w in xrange(W):
-            curr_assign[h, w] = np.argmax(superpix_probs[seg_mat[h, w]]) #np.random.multinomial(1, superpix_probs[seg_mat[h, w]]).argmax()
+            curr_assign[h, w] = np.random.multinomial(1, superpix_probs[seg_mat[h, w]]).argmax()
     
     cdef np.ndarray curr_loc_probs    
     cdef int neighbor_it

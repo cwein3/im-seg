@@ -18,7 +18,7 @@ import boykov_seg
 import sklearn.metrics
 
 colors = [(random.random(),random.random(),random.random()) for i in xrange(256)]
-new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
+new_map = matplotlib.colors.ListedColormap(colors, name='from_list', N=256)
 
 allowed_classes = {u'bed':0, u'bookshelf':1, u'cabinet':2, u'ceiling':3, u'floor':4, u'picture':5, u'sofa':6, u'table':7, u'television':8, u'wall':9, u'window':10}
 
@@ -29,7 +29,7 @@ def assign_superpix_prob(im, network, descs):
     descs: list of tuple of (desc_x, desc_y, sift feature)
     """
     if args.seg_type == 'FELZENSZWALB':
-	im = skimage.io.rgb2gray(im)
+	im = skimage.color.rgb2gray(im)
 	seg_mask = skimage.segmentation.felzenszwalb(im, scale=100)
     if args.seg_type == 'QUICKSHIFT':
         seg_mask = skimage.segmentation.quickshift(im)
@@ -194,7 +194,9 @@ def main():
         filenum = split[i]
 	save_name = args.im_out + ("seg%d.jpg" % filenum)
 	truth_name = args.im_out + ("truth%d.jpg" % filenum)
-        acc_map, conf_map, frequencies = find_acc(filenum, network, color_map, should_save=save_inds[i], save_name=save_name, truth_name=truth_name)
+        if not save_inds[i]:
+	    continue
+	acc_map, conf_map, frequencies = find_acc(filenum, network, color_map, should_save=save_inds[i], save_name=save_name, truth_name=truth_name)
         total_pix = frequencies.sum()
         curr_acc = (curr_acc*running_total + np.sum(acc_map == 0))/(running_total + total_pix)
 	running_total += total_pix
