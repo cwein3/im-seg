@@ -17,10 +17,27 @@ import gco_python.pygco
 import boykov_seg
 import sklearn.metrics
 
+import pyximport
+pyximport.install(
+    setup_args={"include_dirs":np.get_include()}
+    )
+
+import sa_cy
+
 colors = [(random.random(),random.random(),random.random()) for i in xrange(256)]
 new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
 
 allowed_classes = {u'bed':0, u'bookshelf':1, u'cabinet':2, u'ceiling':3, u'floor':4, u'picture':5, u'sofa':6, u'table':7, u'television':8, u'wall':9, u'window':10}
+
+def calc_pix_grad(im):
+    """
+    Not really sure how to do this so we'll leave it at this for now.
+    im: image in RGB
+    """
+    H, W, _ = im.shape
+    pix_grad_vert = np.sum((im[:H - 1, :, :] - im[1:, :, :])**2, axis=2)
+    pix_grad_hor = np.sum((im[:, :W - 1, :] - im[:, 1:, :])**2, axis=2)
+    return pix_grad_vert, pix_grad_hor
 
 def assign_superpix_prob(im, network, descs):
     """
@@ -62,46 +79,29 @@ def assign_superpix_prob(im, network, descs):
 
     return seg_mask, superpix_probs
 
-def calc_pix_grad(im):
-    """
-    Not really sure how to do this so we'll leave it at this for now.
-    im: image in RGB
-    """
-    H, W, _ = im.shape
-    pix_grad_vert = np.sum((im[:H - 1, :, :] - im[1:, :, :])**2, axis=2)
-    pix_grad_hor = np.sum((im[:, :W - 1, :] - im[:, 1:, :])**2, axis=2)
-    return pix_grad_vert, pix_grad_hor
-
-def boykov(im, crf_params, loc_probs, plot_every=1, live_plot=False):
+def perform_sa_cy(im, pix_grad_vert, pix_grad_hor, crf_params, loc_probs, anneal_sched, plot_every=False, live_plot=False):
     d, eta0, alpha, t = crf_params
     seg_mat, superpix_probs = loc_probs
-    H = im.shape[0]
-    W = im.shape[1]
-    num_classes = superpix_probs[0].shape[0]
-    costs = np.zeros((W, H, num_classes), dtype=np.int32)
-    probs_arr = [None for _ in xrange(len(superpix_probs))]
-
+    pix_prb_new = [None for _ in xrange(len(superpix_probs))]
     for key in superpix_probs:
-        probs_arr[key] = -np.log(superpix_probs[key])
+        pix_prb_new[key] = superpix_probs[key]/np.sum(superpix_probs[key])
+    pix_prb_new = np.array(pix_prb_new)
+    
+    assign = sa_cy.perform_sa(
+                im.astype(np.float64), 
+		pix_grad_vert.astype(np.float64),
+		pix_grad_hor.astype(np.float64),
+                seg_mat.astype(np.float64), 
+                pix_prb_new,
+                anneal_sched,
+                plot_every,
+                live_plot,
+                d,
+                eta0,
+                alpha,
+                t)
 
-    for h in xrange(H):
-        for w in xrange(W):
-            costs[w, h] = (100*probs_arr[seg_mat[h, w]]).astype(np.int32)
-
-    pairwise_cost = (d - d*np.eye(num_classes)).astype(np.int32)    
-    grad_vert, grad_hor = calc_pix_grad(im)
-    grad_vert = eta0*np.exp(-alpha*grad_vert)*100
-    grad_hor = eta0*np.exp(-alpha*grad_hor)*100
-    grad_vert = np.concatenate((grad_vert, np.zeros((1,W))), axis=0).astype(np.int32)
-    grad_hor = np.concatenate((grad_hor, np.zeros((H,1))), axis=1).astype(np.int32)
-    grad_vert_T = np.zeros((W, H), dtype=np.int32)
-    grad_hor_T = np.zeros((W, H), dtype=np.int32)
-    grad_vert_T[:] = grad_vert.T
-    grad_hor_T[:] = grad_hor.T
-  
-    #print probs_arr, grad_vert_T, grad_hor_T 
-    lab_assign = gco_python.pygco.cut_simple_vh(costs, pairwise_cost, grad_vert_T, grad_hor_T, n_iter=5, algorithm='expansion')
-    return lab_assign
+    return assign
 
 def segment_im(imfile, featfile, network, d, eta0, alpha, t):
     feat_f = open(featfile, "r")
@@ -115,7 +115,8 @@ def segment_im(imfile, featfile, network, d, eta0, alpha, t):
         descs.append((centers[0], centers[1], feat))
     
     seg_mask, pix_probs = assign_superpix_prob(im, network, descs)
-    assign = boykov(im, (d, eta0, alpha, t), (seg_mask, pix_probs), plot_every=1, live_plot=False)
+    pix_grad_vert, pix_grad_hor = calc_pix_grad(im)
+    assign = perform_sa_cy(im, pix_grad_vert, pix_grad_hor, (d, eta0, alpha, t), (seg_mask, pix_probs), np.linspace(1, 0.01, 15))
     feat_f.close()    
     return assign
 
@@ -126,7 +127,6 @@ def find_acc(filenum, network, colors, should_save=False, save_name=None, truth_
     imfile = args.SUN_dir + ('SUNRGBD/kv1/NYUdata/NYU%04d/image/NYU%04d.jpg' % (filenum, filenum))
     featfile = args.feat_dir + ('%04d.txt' % filenum)
     assign = segment_im(imfile, featfile, network, args.d, args.eta0, args.alpha, args.t)
-    assign = assign.T
     if should_save:
 	plt.imsave(save_name, assign, cmap=colors)
     class_map = allowed_classes.copy() if args.hardcode else pickle.load(open(args.class_map, "r"))
@@ -176,7 +176,7 @@ def main():
     parser.add_argument('--im_out', type=str, help='Directory for where to output the saved random images.')
     parser.add_argument('--seg_type', type=str, default='QUICKSHIFT', help='Superpixel segmentation type to use.')
     args = parser.parse_args()
-    save_inds = pickle.load(open(args.save_inds, "r")) if args.save_inds is not None else (np.zeros((args.num_predict,)) < 0.1)
+    save_inds = pickle.load(open(args.save_inds, "r")) if args.save_inds is not None else (np.random.random((args.num_predict,)) < 0.1)
     color_map = new_map if args.color_map is None else pickle.load(open(args.color_map, "r"))
     if args.new_save_inds is not None:
 	pickle.dump(save_inds, open(args.new_save_inds, "w"))
@@ -194,7 +194,9 @@ def main():
         filenum = split[i]
 	save_name = args.im_out + ("seg%d.jpg" % filenum)
 	truth_name = args.im_out + ("truth%d.jpg" % filenum)
-        acc_map, conf_map, frequencies = find_acc(filenum, network, color_map, should_save=save_inds[i], save_name=save_name, truth_name=truth_name)
+        if not save_inds[i]:
+	    continue
+	acc_map, conf_map, frequencies = find_acc(filenum, network, color_map, should_save=save_inds[i], save_name=save_name, truth_name=truth_name)
         total_pix = frequencies.sum()
         curr_acc = (curr_acc*running_total + np.sum(acc_map == 0))/(running_total + total_pix)
 	running_total += total_pix
@@ -210,4 +212,3 @@ def main():
  
 if __name__ == '__main__':
     main()
-

@@ -10,28 +10,13 @@ DTYPE = np.float64
 ctypedef np.float64_t DTYPE_t
 
 @cython.boundscheck(False)
-def calc_pix_grad(
-        np.ndarray[DTYPE_t, ndim=3] im, 
-        int p1y,
-        int p1x, 
-        int p2y,
-        int p2x):
-    """
-    Not really sure how to do this so we'll leave it at this for now.
-    im: image in RGB
-    p1, p2: tuples for the (y, x) of the image coords
-    """
-    #cdef DTYPE_t ret = np.abs(im[p1y, p1x] - im[p2y, p2x])
-    cdef DTYPE_t ret = np.exp(-0.001*np.linalg.norm(im[p1y, p1x, :] - im[p2y, p2x, :])**2)
-    #ret /= 255**2
-    #ret = 1000
-    return ret
 
 def neighbor_grad_assign(
-        np.ndarray[DTYPE_t, ndim=3] im, 
         int pointy,
         int pointx, 
-        np.ndarray[DTYPE_t, ndim=2] curr_assign
+        np.ndarray[DTYPE_t, ndim=2] pix_grad_vert,
+	np.ndarray[DTYPE_t, ndim=2] pix_grad_hor,
+	np.ndarray[DTYPE_t, ndim=2] curr_assign
         ):
     cdef int num_neighbors = 0
     cdef np.ndarray neighbor_assign = np.empty(4, dtype=np.int)
@@ -40,30 +25,29 @@ def neighbor_grad_assign(
     if pointy - 1 >= 0:
         point2y = pointy - 1
         point2x = pointx
-        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = calc_pix_grad(im, pointy, pointx, point2y, point2x), curr_assign[point2y, point2x]
+        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = pix_grad_vert[point2y, point2x], curr_assign[point2y, point2x]
         num_neighbors += 1
-    if pointy + 1 < im.shape[0]:
+    if pointy + 1 < curr_assign.shape[0]:
         point2y = pointy + 1
         point2x = pointx
-        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = calc_pix_grad(im, pointy
-, pointx, point2y, point2x), curr_assign[point2y, point2x]
+        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = pix_grad_vert[pointy, pointx], curr_assign[point2y, point2x]
         num_neighbors += 1
-    if pointx + 1 < im.shape[1]:
+    if pointx + 1 < curr_assign.shape[1]:
         point2y = pointy
         point2x = pointx + 1
-        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = calc_pix_grad(im, pointy
-, pointx, point2y, point2x), curr_assign[point2y, point2x]
+        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = pix_grad_hor[pointy, pointx], curr_assign[point2y, point2x]
         num_neighbors += 1
     if pointx - 1 >= 0:
         point2y = pointy
         point2x = pointx - 1
-        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = calc_pix_grad(im, pointy
-, pointx, point2y, point2x), curr_assign[point2y, point2x]
+        pix_grad[num_neighbors], neighbor_assign[num_neighbors] = pix_grad_hor[point2y, point2x], curr_assign[point2y, point2x]
         num_neighbors += 1
     return neighbor_assign, pix_grad, num_neighbors
 
 def perform_sa(
         np.ndarray[DTYPE_t, ndim=3] im,
+	np.ndarray[DTYPE_t, ndim=2] pix_grad_vert,
+	np.ndarray[DTYPE_t, ndim=2] pix_grad_hor,
         np.ndarray[DTYPE_t, ndim=2] seg_mat,
         np.ndarray[DTYPE_t, ndim=2] superpix_probs,
         np.ndarray[DTYPE_t, ndim=1] anneal_sched, 
@@ -104,33 +88,26 @@ def perform_sa(
         for w in xrange(W):
             for h in xrange(H):
                 curr_loc_probs = superpix_probs[int(seg_mat[h, w])]
-                neighbor_assign, pix_grad, num_neighbors = neighbor_grad_assign(gray_im, h, w, curr_assign)
+                neighbor_assign, pix_grad, num_neighbors = neighbor_grad_assign(h, w, pix_grad_vert, pix_grad_hor, curr_assign)
                 curr_probs = -np.log(curr_loc_probs)
                 for neighbor_it in xrange(num_neighbors): 
-                    add_val = d*eta0*pix_grad[neighbor_it]#np.exp(-alpha*np.max(pix_grad[neighbor_it] - t, 0))
+                    add_val = d*eta0*np.exp(-alpha*pix_grad[neighbor_it])
                     curr_probs += add_val
-                    #print(add_val)
                     curr_probs[neighbor_assign[neighbor_it]] -= add_val
-                curr_assign[h, w] = np.argmax(-curr_probs)
-                #curr_probs *= -1.0/temp
-                #curr_probs -= np.amax(curr_probs)
-                #curr_probs = np.exp(curr_probs)
-                #curr_probs /= curr_probs.sum()
-                #curr_assign[h, w] = np.random.multinomial(1, curr_probs).argmax()
-        #if live_plot and (ind % plot_every == 0):
-        #    plt.imshow(curr_assign, cmap=new_map)            
-        #    plt.show()
+                curr_probs *= -1.0/temp
+                curr_probs -= np.amax(curr_probs)
+                curr_probs = np.exp(curr_probs)
+                curr_probs /= curr_probs.sum()
+                curr_assign[h, w] = np.random.multinomial(1, curr_probs).argmax()
 
     for w in xrange(W):
         for h in xrange(H):
             curr_loc_probs = superpix_probs[seg_mat[h, w]]
-            neighbor_assign, pix_grad, num_neighbors = neighbor_grad_assign(gray_im, h, w, curr_assign)
+            neighbor_assign, pix_grad, num_neighbors = neighbor_grad_assign(h, w, pix_grad_vert, pix_grad_hor, curr_assign)
             curr_probs = -np.log(curr_loc_probs)
             for neighbor_it in xrange(num_neighbors):
-                add_val = d*eta0*pix_grad[neighbor_it]#np.exp(-alpha*np.max(pix_grad[neighbor_it] - t, 0))
+                add_val = d*eta0*np.exp(-alpha*pix_grad[neighbor_it])                
                 curr_probs += add_val
                 curr_probs[neighbor_assign[neighbor_it]] -= add_val
             curr_assign[h, w] = np.argmax(-curr_probs)
-    ##plt.imshow(curr_assign, cmap=new_map)
-    #plt.show()
     return curr_assign    
